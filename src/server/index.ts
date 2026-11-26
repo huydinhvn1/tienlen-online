@@ -7,6 +7,7 @@ import { dataDir, googleClientId, listenPort, loadEnvFile, sessionSecret } from 
 import { initDb } from './db.ts';
 import { registerAuth, userFromCookieHeader } from './auth.ts';
 import { attachSockets } from './rooms.ts';
+import { allowedCorsOrigins, corsMiddleware, isAllowedCorsOrigin } from './cors.ts';
 
 loadEnvFile();
 
@@ -18,11 +19,20 @@ const prod = process.env.NODE_ENV === 'production';
 
 const app = express();
 app.set('trust proxy', 1);
+app.use(corsMiddleware);
 app.use(express.json({ limit: '64kb' }));
 registerAuth(app, { db, secret, googleClientId: clientId });
 
 const httpServer = createServer(app);
-const io = new Server(httpServer);
+const allowedOrigins = allowedCorsOrigins();
+const io = new Server(httpServer, {
+  cors: {
+    origin: (origin, callback) => {
+      callback(null, isAllowedCorsOrigin(origin, allowedOrigins));
+    },
+    credentials: true,
+  },
+});
 attachSockets(io, db, (cookie) => userFromCookieHeader(cookie, secret, db));
 
 if (!prod) {
